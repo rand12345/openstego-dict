@@ -323,62 +323,37 @@ public class OpenStegoCmd {
             displayUsage();
             return;
         }
-        // Changes made here.
+        // Changes made here
+        // ==============================================================
         if (stego.getConfig().getPassword() != null) {
-            // Check if cmd line password entry is a (dictionary) file
-            if (new File(stegoFileName).isFile()) {
+            // Check if cmd line password entry is a (dictionary) file by testing string as
+            // file. Loops until correct password is found or dictionary is exhausted.
+
+            try (BufferedReader br = new BufferedReader(new FileReader(stego.getConfig().getPassword()))) {
                 System.err.println("Dictionary attack using file: " + stego.getConfig().getPassword());
-                try (BufferedReader br = new BufferedReader(new FileReader(stego.getConfig().getPassword()))) {
-                    String line;
-                    // Loop over text file a check if valid password
-                    while ((line = br.readLine()) != null) {
-                        stego.getConfig().setPassword(line);
-                        try {
-                            msgData = stego.extractData(new File(stegoFileName));
-                            // Correct password guess, break from while loop and process
-                            System.err.println("Found password: " + line);
-                            break;
-                        } catch (OpenStegoException osEx) {
-                            if (osEx.getErrorCode() == OpenStegoErrors.INVALID_PASSWORD
-                                    || osEx.getErrorCode() == OpenStegoErrors.NO_VALID_PLUGIN) {
+                String line;
+                // Loop over text file a check if valid password
+                while ((line = br.readLine()) != null) {
+                    stego.getConfig().setPassword(line);
+                    try {
+                        msgData = stego.extractData(new File(stegoFileName));
+                        // Correct password guess, break from while loop and process
+                        System.err.println("Found password: " + line);
+                        break;
+                    } catch (OpenStegoException osEx) {
+                        if (osEx.getErrorCode() == OpenStegoErrors.INVALID_PASSWORD
+                                || osEx.getErrorCode() == OpenStegoErrors.NO_VALID_PLUGIN) {
 
-                                System.err.println("Password incorrect: " + line);
-                                continue;
-                            }
+                            System.err.println("Password incorrect: " + line);
+                            continue;
                         }
                     }
-                } catch (IOException e) {
-                    e.printStackTrace();
                 }
-            } else
-                try {
-                    msgData = stego.extractData(new File(stegoFileName));
-                } catch (OpenStegoException osEx) {
-                    if (osEx.getErrorCode() == OpenStegoErrors.INVALID_PASSWORD
-                            || osEx.getErrorCode() == OpenStegoErrors.NO_VALID_PLUGIN) {
-                        if (stego.getConfig().getPassword() == null) {
-                            stego.getConfig().setPassword(
-                                    PasswordInput.readPassword(labelUtil.getString("cmd.msg.enterPassword") + " "));
-
-                            try {
-                                msgData = stego.extractData(new File(stegoFileName));
-                            } catch (OpenStegoException inEx) {
-                                if (inEx.getErrorCode() == OpenStegoErrors.INVALID_PASSWORD) {
-                                    System.err.println(inEx.getMessage());
-                                    return;
-                                } else {
-                                    throw inEx;
-                                }
-                            }
-                        } else {
-                            System.err.println(osEx.getMessage());
-                            return;
-                        }
-                    } else {
-                        throw osEx;
-                    }
-                }
+            } catch (IOException e) {
+                System.err.println("Attempting to extract using password: " + stego.getConfig().getPassword());
+            }
         }
+        // end changes ==============================================================
 
         try {
             msgData = stego.extractData(new File(stegoFileName));
