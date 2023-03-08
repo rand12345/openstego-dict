@@ -14,7 +14,11 @@ import com.openstego.desktop.util.cmd.CmdLineOptions;
 import com.openstego.desktop.util.cmd.CmdLineParser;
 import com.openstego.desktop.util.cmd.PasswordInput;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -55,7 +59,8 @@ public class OpenStegoCmd {
             if (pluginName != null && !pluginName.equals("")) {
                 plugin = PluginManager.getPluginByName(pluginName);
                 if (plugin == null) {
-                    throw new OpenStegoException(null, OpenStego.NAMESPACE, OpenStegoErrors.PLUGIN_NOT_FOUND, pluginName);
+                    throw new OpenStegoException(null, OpenStego.NAMESPACE, OpenStegoErrors.PLUGIN_NOT_FOUND,
+                            pluginName);
                 }
             }
             // Try to auto-select plugin
@@ -72,7 +77,8 @@ public class OpenStegoCmd {
                             if (plugins.size() == 1) {
                                 plugin = plugins.get(0);
                             }
-                        } else if (command.equals("gensig") || command.equals("embedmark") || command.equals("checkmark")) {
+                        } else if (command.equals("gensig") || command.equals("embedmark")
+                                || command.equals("checkmark")) {
                             plugins = PluginManager.getWatermarkingPlugins();
                             if (plugins.size() == 1) {
                                 plugin = plugins.get(0);
@@ -92,7 +98,8 @@ public class OpenStegoCmd {
 
             for (int i = 0; i < optionList.size(); i++) {
                 option = optionList.get(i);
-                if (((i == 0) && (option.getType() != CmdLineOption.TYPE_COMMAND)) || ((i > 0) && (option.getType() == CmdLineOption.TYPE_COMMAND))) {
+                if (((i == 0) && (option.getType() != CmdLineOption.TYPE_COMMAND))
+                        || ((i > 0) && (option.getType() == CmdLineOption.TYPE_COMMAND))) {
                     displayUsage();
                     return;
                 }
@@ -203,12 +210,14 @@ public class OpenStegoCmd {
 
         // Check if we need to prompt for password
         if (stego.getConfig().isUseEncryption() && stego.getConfig().getPassword() == null) {
-            stego.getConfig().setPassword(PasswordInput.readPassword(labelUtil.getString("cmd.msg.enterPassword") + " "));
+            stego.getConfig()
+                    .setPassword(PasswordInput.readPassword(labelUtil.getString("cmd.msg.enterPassword") + " "));
         }
 
         File msgFile = (msgFileName == null || msgFileName.equals("-")) ? null : new File(msgFileName);
         coverFileList = CommonUtil.parseFileList(coverFileName, ";");
-        // If no coverfile or only one coverfile is provided then use stegofile name given by the user
+        // If no coverfile or only one coverfile is provided then use stegofile name
+        // given by the user
         if (coverFileList.size() <= 1) {
             if (coverFileList.size() == 0 && coverFileName != null && !coverFileName.equals("-")) {
                 System.err.println(labelUtil.getString("cmd.msg.coverFileNotFound", coverFileName));
@@ -220,7 +229,8 @@ public class OpenStegoCmd {
                     stego.embedData(msgFile, coverFileList.size() == 0 ? null : coverFileList.get(0), stegoFile),
                     stegoFile);
         }
-        // Else loop through all coverfiles and overwrite the same coverfiles with generated stegofiles
+        // Else loop through all coverfiles and overwrite the same coverfiles with
+        // generated stegofiles
         else {
             // If stego file name is provided, then warn user that it will be ignored
             if (stegoFileName != null && !stegoFileName.equals("-")) {
@@ -258,7 +268,8 @@ public class OpenStegoCmd {
 
         File sigFile = (sigFileName == null || sigFileName.equals("-")) ? null : new File(sigFileName);
         List<File> coverFileList = CommonUtil.parseFileList(coverFileName, ";");
-        // If no coverfile or only one coverfile is provided then use stegofile name given by the user
+        // If no coverfile or only one coverfile is provided then use stegofile name
+        // given by the user
         if (coverFileList.size() <= 1) {
             if (coverFileList.size() == 0 && coverFileName != null && !coverFileName.equals("-")) {
                 System.err.println(labelUtil.getString("cmd.msg.coverFileNotFound", coverFileName));
@@ -270,7 +281,8 @@ public class OpenStegoCmd {
                     stego.embedMark(sigFile, coverFileList.size() == 0 ? null : coverFileList.get(0), stegoFile),
                     stegoFile);
         }
-        // Else loop through all coverfiles and overwrite the same coverfiles with generated stegofiles
+        // Else loop through all coverfiles and overwrite the same coverfiles with
+        // generated stegofiles
         else {
             // If stego file name is provided, then warn user that it will be ignored
             if (stegoFileName != null && !stegoFileName.equals("-")) {
@@ -305,17 +317,77 @@ public class OpenStegoCmd {
         String extractFileName;
         List<?> msgData;
 
-        if (stegoFileName == null) {
+        if (stegoFileName == null)
+
+        {
             displayUsage();
             return;
+        }
+        // Changes made here.
+        if (stego.getConfig().getPassword() != null) {
+            // Check if cmd line password entry is a (dictionary) file
+            if (new File(stegoFileName).isFile()) {
+                System.err.println("Dictionary attack using file: " + stego.getConfig().getPassword());
+                try (BufferedReader br = new BufferedReader(new FileReader(stego.getConfig().getPassword()))) {
+                    String line;
+                    // Loop over text file a check if valid password
+                    while ((line = br.readLine()) != null) {
+                        stego.getConfig().setPassword(line);
+                        try {
+                            msgData = stego.extractData(new File(stegoFileName));
+                            // Correct password guess, break from while loop and process
+                            System.err.println("Found password: " + line);
+                            break;
+                        } catch (OpenStegoException osEx) {
+                            if (osEx.getErrorCode() == OpenStegoErrors.INVALID_PASSWORD
+                                    || osEx.getErrorCode() == OpenStegoErrors.NO_VALID_PLUGIN) {
+
+                                System.err.println("Password incorrect: " + line);
+                                continue;
+                            }
+                        }
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            } else
+                try {
+                    msgData = stego.extractData(new File(stegoFileName));
+                } catch (OpenStegoException osEx) {
+                    if (osEx.getErrorCode() == OpenStegoErrors.INVALID_PASSWORD
+                            || osEx.getErrorCode() == OpenStegoErrors.NO_VALID_PLUGIN) {
+                        if (stego.getConfig().getPassword() == null) {
+                            stego.getConfig().setPassword(
+                                    PasswordInput.readPassword(labelUtil.getString("cmd.msg.enterPassword") + " "));
+
+                            try {
+                                msgData = stego.extractData(new File(stegoFileName));
+                            } catch (OpenStegoException inEx) {
+                                if (inEx.getErrorCode() == OpenStegoErrors.INVALID_PASSWORD) {
+                                    System.err.println(inEx.getMessage());
+                                    return;
+                                } else {
+                                    throw inEx;
+                                }
+                            }
+                        } else {
+                            System.err.println(osEx.getMessage());
+                            return;
+                        }
+                    } else {
+                        throw osEx;
+                    }
+                }
         }
 
         try {
             msgData = stego.extractData(new File(stegoFileName));
         } catch (OpenStegoException osEx) {
-            if (osEx.getErrorCode() == OpenStegoErrors.INVALID_PASSWORD || osEx.getErrorCode() == OpenStegoErrors.NO_VALID_PLUGIN) {
+            if (osEx.getErrorCode() == OpenStegoErrors.INVALID_PASSWORD
+                    || osEx.getErrorCode() == OpenStegoErrors.NO_VALID_PLUGIN) {
                 if (stego.getConfig().getPassword() == null) {
-                    stego.getConfig().setPassword(PasswordInput.readPassword(labelUtil.getString("cmd.msg.enterPassword") + " "));
+                    stego.getConfig().setPassword(
+                            PasswordInput.readPassword(labelUtil.getString("cmd.msg.enterPassword") + " "));
 
                     try {
                         msgData = stego.extractData(new File(stegoFileName));
@@ -348,6 +420,9 @@ public class OpenStegoCmd {
             extractFileName = extractDir + File.separator + extractFileName;
         }
 
+        // Print output to STDOUT
+        String output = new String((byte[]) msgData.get(1), StandardCharsets.UTF_8);
+        System.err.println("Secrets found: " + output);
         CommonUtil.writeFile((byte[]) msgData.get(1), extractFileName);
         System.err.println(labelUtil.getString("cmd.msg.fileExtracted", extractFileName));
     }
@@ -393,11 +468,13 @@ public class OpenStegoCmd {
     private static void executeGenSig(CmdLineOptions options, OpenStego stego) throws OpenStegoException {
         // Check if we need to prompt for password
         if (stego.getConfig().getPassword() == null) {
-            stego.getConfig().setPassword(PasswordInput.readPassword(labelUtil.getString("cmd.msg.enterPassword") + " "));
+            stego.getConfig()
+                    .setPassword(PasswordInput.readPassword(labelUtil.getString("cmd.msg.enterPassword") + " "));
         }
 
         String signatureFileName = options.getStringValue("-gf");
-        CommonUtil.writeFile(stego.generateSignature(), (signatureFileName == null || signatureFileName.equals("-")) ? null : signatureFileName);
+        CommonUtil.writeFile(stego.generateSignature(),
+                (signatureFileName == null || signatureFileName.equals("-")) ? null : signatureFileName);
     }
 
     /**
@@ -417,7 +494,8 @@ public class OpenStegoCmd {
             extractFileName = extractDir + File.separator + extractFileName;
         }
 
-        CommonUtil.writeFile(stego.getDiff(new File(stegoFileName), new File(coverFileName), extractFileName), extractFileName);
+        CommonUtil.writeFile(stego.getDiff(new File(stegoFileName), new File(coverFileName), extractFileName),
+                extractFileName);
     }
 
     /**
